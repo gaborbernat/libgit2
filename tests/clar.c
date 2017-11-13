@@ -97,7 +97,7 @@ fixture_path(const char *base, const char *fixture_name);
 
 struct clar_error {
 	const char *test;
-	int test_number;
+	size_t test_number;
 	const char *suite;
 	const char *file;
 	int line_number;
@@ -105,6 +105,12 @@ struct clar_error {
 	char *description;
 
 	struct clar_error *next;
+};
+
+struct test_duration{
+	double duration;
+	const struct clar_suite *suite;
+	const struct clar_func *test;
 };
 
 static struct {
@@ -115,11 +121,11 @@ static struct {
 	const char *active_test;
 	const char *active_suite;
 
-	int total_skipped;
-	int total_errors;
+    size_t total_skipped;
+    size_t total_errors;
 
-	int tests_ran;
-	int suites_ran;
+	size_t tests_ran;
+	size_t suites_ran;
 
 	int report_errors_only;
 	int exit_on_error;
@@ -127,6 +133,9 @@ static struct {
 
 	int verbosity;
 	double evaluation_duration;
+
+    struct test_duration* durations;
+    size_t report_top_n_duration;
 
 	struct clar_error *errors;
 	struct clar_error *last_error;
@@ -157,11 +166,11 @@ struct clar_suite {
 };
 
 /* From clar_print_*.c */
-static void clar_print_init(int test_count, int suite_count, const char *suite_names);
-static void clar_print_shutdown(const double evaluation_duration, int test_count, int suite_count, int error_count, int skip_count);
-static void clar_print_error(int num, const struct clar_error *error);
-static void clar_print_ontest(const char *test_name, int test_number, enum cl_test_status failed);
-static void clar_print_onsuite(const char *suite_name, int suite_index, size_t tests_in_suite);
+static void clar_print_init(size_t test_count, size_t suite_count, const char *suite_names);
+static void clar_print_shutdown(const double evaluation_duration, size_t test_count, size_t suite_count, size_t error_count, size_t skip_count);
+static void clar_print_error(size_t num, const struct clar_error *error);
+static void clar_print_ontest(const char *test_name, size_t test_number, enum cl_test_status failed);
+static void clar_print_onsuite(const char *suite_name, size_t suite_index, size_t tests_in_suite);
 static void clar_print_onabort(const char *msg, ...);
 
 /* From clar_sandbox.c */
@@ -213,6 +222,7 @@ clar_run_test(
 	const struct clar_func *initialize,
 	const struct clar_func *cleanup)
 {
+
 	_clar.test_status = CL_TEST_OK;
 	_clar.trampoline_enabled = 1;
 
@@ -255,6 +265,7 @@ clar_run_suite(const struct clar_suite *suite, const char *filter)
 {
 	const struct clar_func *test = suite->tests;
 	size_t i, matchlen;
+	double start;
 
 	if (!suite->enabled)
 		return;
@@ -287,7 +298,17 @@ clar_run_suite(const struct clar_suite *suite, const char *filter)
 			continue;
 
 		_clar.active_test = test[i].name;
+
+        if(_clar.report_top_n_duration > 0)
+            start = git__timer();
+
 		clar_run_test(&test[i], &suite->initialize, &suite->cleanup);
+
+        if(_clar.report_top_n_duration > 0) {
+            _clar.durations[_clar.tests_ran - 1].suite = suite;
+            _clar.durations[_clar.tests_ran - 1].test = &test[i];
+            _clar.durations[_clar.tests_ran - 1].duration = git__timer() - start;
+        }
 
 		if (_clar.exit_on_error && _clar.total_errors)
 			return;
@@ -305,7 +326,8 @@ clar_usage(const char *arg)
 	printf("  -sname\tRun only the suite with `name` (can go to individual test name)\n");
 	printf("  -iname\tInclude the suite with `name`\n");
 	printf("  -xname\tExclude the suite with `name`\n");
-	printf("  -v    \tIncrease verbosity (show suite names)\n");
+    printf("  -dn\tReport durations of the top n slowest tests in ms, e.g. -d10\n");
+	printf("  -v    \tIncrease verbosity (show suite nam es)\n");
 	printf("  -q    \tOnly report tests that had an error\n");
 	printf("  -Q    \tQuit as soon as a test fails\n");
 	printf("  -l    \tPrint suite names\n");
@@ -318,13 +340,14 @@ clar_parse_args(int argc, char **argv)
 	int i;
 
 	_clar.verbosity = 0;
+    _clar.report_top_n_duration = 0;
 
 	/* Verify options before execute */
 	for (i = 1; i < argc; ++i) {
 		char *argument = argv[i];
 
 		if (argument[0] != '-' || argument[1] == '\0'
-		    || strchr("sixvqQl", argument[1]) == NULL) {
+		    || strchr("sixvqQld", argument[1]) == NULL) {
 			clar_usage(argv[0]);
 		}
 	}
@@ -382,6 +405,13 @@ clar_parse_args(int argc, char **argv)
 			break;
 		}
 
+        case 'd': {
+            _clar.report_top_n_duration = (size_t) atoi(argument + 2 * sizeof(char));
+			if(_clar.report_top_n_duration > 0)
+				_clar.durations = calloc(_clar_callback_count, sizeof(struct clar_error));
+            break;
+        }
+
 		case 'q':
 			_clar.report_errors_only = 1;
 			break;
@@ -425,16 +455,18 @@ clar_test_init(int argc, char **argv)
 
 	_clar.argc = argc;
 	_clar.argv = argv;
+
 }
 
-int
+size_t
 clar_test_run(void)
 {
+	size_t i;
+
 	if (_clar.argc > 1)
 		clar_parse_args(_clar.argc, _clar.argv);
 
 	if (!_clar.suites_ran) {
-		size_t i;
 		for (i = 0; i < _clar_suite_count; ++i)
 			clar_run_suite(&_clar_suites[i], NULL);
 	}
@@ -442,9 +474,44 @@ clar_test_run(void)
 	return _clar.total_errors;
 }
 
+int compareTestDuration(const void *t1, const void *t2)
+{
+    const double diff =  ((struct test_duration *)t1)->duration - ((struct test_duration *)t2)->duration;
+    if (diff > 0)
+        return -1;
+    return 1;
+}
+
+void handle_durations(void){
+	int max_ms_length, format_length, format_count_length, format_entire_length, written;
+	const char* format_end = ".4f\t%s::%s\n";
+    char* format;
+
+	if(_clar.report_top_n_duration > 0 && _clar.tests_ran > 0) {
+
+		qsort(_clar.durations, (size_t)_clar.tests_ran, sizeof(struct test_duration), compareTestDuration);
+
+		// generate the correct length formatting string, four digit precision
+		max_ms_length = snprintf(NULL, 0, "%d", (int)(1000*_clar.durations[0].duration));
+		format_length = 4 + 1 + max_ms_length;
+ 		format_count_length = snprintf(NULL, 0, "%%%d", format_length);
+        format_entire_length = format_count_length + (int)strlen(format_end);
+		format = (char*) malloc(format_entire_length * sizeof(char));
+        written = snprintf(format, (size_t)format_entire_length, "%%%d", format_length);
+        strcpy(format + written, format_end);
+
+		for(size_t i = 0; i < _clar.report_top_n_duration; ++i) {
+			printf(format, 1000*_clar.durations[i].duration,
+				   _clar.durations[i].suite->name, _clar.durations[i].test->name);
+		}
+	}
+		free(_clar.durations);
+};
+
 void
 clar_test_shutdown(void)
 {
+
 	clar_print_shutdown(
 		_clar.evaluation_duration,
 		_clar.tests_ran,
@@ -452,16 +519,17 @@ clar_test_shutdown(void)
 		_clar.total_errors,
 		_clar.total_skipped
 	);
-
+	handle_durations();
 	clar_unsandbox();
 }
 
-int
+size_t
 clar_test(void)
 {
-	int errors;
-	double start = git__timer();
+	size_t errors;
+	double start;
 
+    start =  git__timer();
 	errors = clar_test_run();
 	_clar.evaluation_duration = git__timer() - start;
 	clar_test_shutdown();

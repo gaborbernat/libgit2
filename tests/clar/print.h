@@ -1,14 +1,14 @@
 
-static void clar_print_init(int test_count, int suite_count, const char *suite_names)
+static void clar_print_init(size_t test_count, size_t suite_count, const char *suite_names)
 {
 	(void)suite_names;
-	printf("Loaded %d suites, with %d tests, starting\n", suite_count, test_count);
+	printf("Loaded %zu suites, with %zu tests, starting\n", suite_count, test_count);
 }
 
 static void clar_print_shutdown(const double evaluation_duration,
-								int test_count, int suite_count, int error_count, int skip_count)
+                                size_t test_count, size_t suite_count, size_t error_count, size_t skip_count)
 {
-	int success_count;
+	size_t success_count;
 	printf("\n\n");
 	clar_report_errors();
 
@@ -16,24 +16,24 @@ static void clar_print_shutdown(const double evaluation_duration,
 		if (test_count == 0)
 			printf("no tests found");
 		else {
-			printf("\nran %d [", test_count);
+			printf("\nran %zu [", test_count);
 			success_count = test_count - skip_count - error_count;
 			if (success_count)
-				printf("%d passed", success_count);
+				printf("%zu passed", success_count);
 			if (skip_count)
-				printf(" %d skipped", skip_count);
+				printf(" %zu skipped", skip_count);
 			if (error_count)
-				printf(" %d failed", error_count);
-			printf("] in %d suits", suite_count);
+				printf(" %zu failed", error_count);
+			printf("] in %zu suits", suite_count);
 			printf(" in %.4f seconds", evaluation_duration);
 		}
 		printf("\n");
 	}
 }
 
-static void clar_print_error(int num, const struct clar_error *error)
+static void clar_print_error(size_t num, const struct clar_error *error)
 {
-	printf("  %d) Failure:\n", num);
+	printf("  %zu) Failure:\n", num);
 
 	printf("%s::%s [%s:%d]\n",
 		error->suite,
@@ -50,10 +50,10 @@ static void clar_print_error(int num, const struct clar_error *error)
 	fflush(stdout);
 }
 
-static void clar_print_ontest(const char *test_name, int test_number, enum cl_test_status status)
+static void clar_print_ontest(const char *test_name, size_t test_number, enum cl_test_status status)
 {
 	if (_clar.verbosity > 1)
-		printf("\n  %s [#%d] ", test_name, test_number);
+		printf("\n  %s [#%zu] ", test_name, test_number);
 
 	switch(status) {
 	case CL_TEST_OK: printf("."); break;
@@ -64,13 +64,13 @@ static void clar_print_ontest(const char *test_name, int test_number, enum cl_te
 	fflush(stdout);
 }
 
-static void clar_print_onsuite(const char *suite_name, int suite_index, size_t tests_in_suite)
+static void clar_print_onsuite(const char *suite_name, size_t suite_index, size_t tests_in_suite)
 {
 	if (_clar.verbosity > 0 || _clar.report_suite_names)
 		printf("\n%s", suite_name);
 
 	if (_clar.verbosity > 1)
-		printf(" [#%d with %zu tests]", suite_index, tests_in_suite);
+		printf(" [#%zu with %zu tests]", suite_index, tests_in_suite);
 }
 
 static void clar_print_onabort(const char *msg, ...)

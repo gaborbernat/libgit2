@@ -16,10 +16,10 @@ enum cl_test_status {
 };
 
 void clar_test_init(int argc, char *argv[]);
-int clar_test_run(void);
+size_t clar_test_run(void);
 void clar_test_shutdown(void);
 
-int clar_test(void);
+size_t clar_test(void);
 
 const char *clar_sandbox_path(void);
 
